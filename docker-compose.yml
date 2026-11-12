@@ -1,0 +1,75 @@
+name: ${COMPOSE_PROJECT_NAME:-probe-agreement}
+services:
+ db:
+  image: mysql:8.4
+  container_name: ${COMPOSE_PROJECT_NAME:-probe-agreement}-db
+  environment:
+   MYSQL_DATABASE: probe
+   MYSQL_USER: probe
+   MYSQL_PASSWORD: probe_demo
+   MYSQL_ROOT_PASSWORD: root_demo_local
+  ports: ["${DB_PORT:-17721}:3306"]
+  volumes: ["db-data:/var/lib/mysql"]
+  healthcheck:
+   test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -proot_demo_local --silent"]
+   interval: 5s
+   timeout: 5s
+   retries: 35
+ redis:
+  image: redis:7.4-alpine
+  container_name: ${COMPOSE_PROJECT_NAME:-probe-agreement}-redis
+  command: ["redis-server","--appendonly","yes"]
+  volumes: ["redis-data:/data"]
+  healthcheck:
+   test: ["CMD","redis-cli","ping"]
+   interval: 5s
+   timeout: 3s
+   retries: 15
+ backend:
+  build: ./backend
+  container_name: ${COMPOSE_PROJECT_NAME:-probe-agreement}-backend
+  environment: &environment
+   DATABASE_URL: mysql+pymysql://probe:probe_demo@db:3306/probe
+   REDIS_URL: redis://redis:6379/0
+   JWT_SECRET: ${JWT_SECRET:-probe-agreement-local-demo-change-before-deployment}
+   SEED_DEMO: ${SEED_DEMO:-true}
+  ports: ["${BACKEND_PORT:-19221}:8000"]
+  volumes: ["artifacts:/artifacts"]
+  depends_on:
+   db: {condition: service_healthy}
+   redis: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+   interval: 5s
+   timeout: 5s
+   retries: 30
+ worker:
+  build: ./backend
+  container_name: ${COMPOSE_PROJECT_NAME:-probe-agreement}-worker
+  command: ["python","-m","src.worker"]
+  environment: *environment
+  volumes: ["artifacts:/artifacts"]
+  depends_on:
+   db: {condition: service_healthy}
+   redis: {condition: service_healthy}
+   backend: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD","python","-c","import time,pathlib; p=pathlib.Path('/artifacts/worker-heartbeat'); assert p.exists() and time.time()-p.stat().st_mtime<20"]
+   interval: 5s
+   timeout: 3s
+   retries: 20
+ frontend:
+  build: ./frontend
+  container_name: ${COMPOSE_PROJECT_NAME:-probe-agreement}-frontend
+  ports: ["${FRONTEND_PORT:-18221}:80"]
+  depends_on:
+   backend: {condition: service_healthy}
+  healthcheck:
+   test: ["CMD-SHELL","wget -q -O /dev/null http://127.0.0.1/"]
+   interval: 5s
+   timeout: 3s
+   retries: 20
+volumes:
+ db-data:
+ redis-data:
+ artifacts:

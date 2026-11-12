@@ -1,0 +1,2 @@
+import {ref} from 'vue';import {request} from '../api/client';import type {Entity} from '../types/domain';
+export function entityStore(resource:string){const items=ref<Entity[]>([]);const error=ref('');const busy=ref(false);async function load(){busy.value=true;try{items.value=await request('/'+resource);error.value=''}catch(e){error.value=(e as Error).message}finally{busy.value=false}};async function create(value:unknown){const r=await request('/'+resource,'POST',value);await load();return r}return {items,error,busy,load,create}}

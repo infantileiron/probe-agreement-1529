@@ -1,0 +1,3 @@
+-- New MySQL baseline: SQLAlchemy metadata creates datasets, instruments, studies, runs, reviews, reports, users, audits.
+-- Study variance_ratio and tolerance explicitly use DOUBLE.
+-- Existing deployments require reviewed migrations; automatic destructive upgrades are not provided.

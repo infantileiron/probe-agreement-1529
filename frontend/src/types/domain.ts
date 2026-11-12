@@ -1,0 +1,1 @@
+export type Role="admin"|"analyst"|"viewer";export interface User{email:string;role:Role}export interface Entity{id:string;created_at:string;[key:string]:any}export interface Point{pair_id:string;range_label:string;x:number;y:number;mean:number;difference:number;fitted_y:number;outside_loa:boolean;outside_tolerance:boolean}

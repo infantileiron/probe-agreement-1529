@@ -1,0 +1,1 @@
+import {ref} from "vue";export function useTask(){const error=ref("");const busy=ref(false);async function act(fn:()=>Promise<unknown>){busy.value=true;error.value="";try{await fn()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}return {error,busy,act}}

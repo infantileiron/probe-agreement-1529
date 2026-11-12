@@ -1,0 +1,1 @@
+export const roles=["admin","analyst","viewer"] as const;export const runStatuses=["queued","running","completed","failed"] as const;export const rangeBands=["low","middle","high"] as const;export const rangeLabels:Record<string,string>={low:"低量程",middle:"中量程",high:"高量程"};export const units=["kPa","bar","degC","mg/L"] as const;
