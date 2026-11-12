@@ -1,3 +1,12 @@
 -- New MySQL baseline: SQLAlchemy metadata creates datasets, instruments, studies, runs, reviews, reports, users, audits.
 -- Study variance_ratio and tolerance explicitly use DOUBLE.
 -- Existing deployments require reviewed migrations; automatic destructive upgrades are not provided.
+--
+-- Reliability patch (applied idempotently at startup by config/database.py when columns are missing):
+-- ALTER TABLE runs
+--   ADD COLUMN lease_owner VARCHAR(64) NOT NULL DEFAULT '',
+--   ADD COLUMN lease_expires_at DATETIME NULL,
+--   ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0,
+--   ADD COLUMN updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+-- UPDATE runs SET updated_at = created_at WHERE updated_at IS NULL;
+-- Existing rows keep their status/result/error; completed and failed runs are never reprocessed.

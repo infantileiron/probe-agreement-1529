@@ -24,7 +24,7 @@ docker compose exec -T backend python -m scripts.seed_demo
 | 锁定安装 | 复用已验Vue依赖锁，仅修改工程名；npm ci，构建含vue-tsc |
 | 后端 | Python3.12、FastAPI0.115.6、SQLAlchemy2.0.36 |
 | 存储 | MySQL8.4 LTS、Redis7.4；误差比和容差列明确DOUBLE |
-| 后台 | Redis列表队列、独立Python worker，运行状态与结果写MySQL |
+| 后台 | Redis列表仅作信号队列、独立Python worker；运行状态、租约与结果写MySQL，崩溃可恢复 |
 | 网关 | Nginx1.28、SPA回落；健康检查显式127.0.0.1 |
 
 恰好frontend/backend/worker/db/redis五服务，均有healthcheck与healthy依赖；数据库、Redis和共享心跳产物具名卷。演示清理 `docker compose down -v --remove-orphans`，保留数据时省略 `-v`。
@@ -82,10 +82,28 @@ Seed为固定20261112的240组、三量程、两探头JQ-P17/JQ-P18，单位kPa�
 
 种子自然键幂等，重复运行不覆盖用户修改的批次说明。
 
+## 后台可靠性
+
+运行可靠性以MySQL为事实来源，Redis列表只承担“有新信号”的通知职责，消息丢失不影响数据一致。
+
+- 每次领取是一条条件 `UPDATE`：仅 `queued` 或租约已过期的 `running` 可被领取，同时写入随机租约令牌（`lease_owner`）、`lease_expires_at` 并递增 `attempts`。同一运行被同时领取或被重复投递时只有一个领取者胜出，不产生第二份计算。
+- worker计算期间由心跳线程按 `RUN_HEARTBEAT_SECONDS` 续租（租约长度 `RUN_LEASE_SECONDS`，默认30秒）。worker崩溃或卡死导致心跳停止后，协调循环（间隔 `RUN_REAP_INTERVAL_SECONDS`）把过期租约退回 `queued` 并重新发信号，运行不再永久停在“计算中”。
+- 完成或失败必须凭原租约令牌写终态。过期领取者晚回来的结果（无论成功还是失败）因令牌不匹配被拒绝，无法覆盖新领取者的结果；`lease_owner` 清空、租约时间置空。
+- `queued` 超过宽限 `RUN_QUEUED_GRACE_SECONDS` 但Redis队列中没有对应信号时，协调循环自动补发，消息丢失可找回；宽限内不重复发信号。
+- `completed`/`failed` 终态不参与回收与重投，既有运行底稿、偏倚复核和批准报告快照保持原样可照常读取。
+- 新库由元数据建表；存量库启动时幂等补列（`lease_owner/lease_expires_at/attempts/updated_at`），不改动存量行，无版本化回滚。
+
+测试在 `backend/tests/`（pytest + SQLite + fakeredis），覆盖异常中断回收、并发/重复领取、晚到结果拒绝、消息丢失补发、终态稳定与报告可读性：
+
+```sh
+pip install -r backend/requirements-test.txt
+cd backend && python3 -m pytest tests/
+```
+
 ## 已知差异
 
 - 采用MySQL8.4 LTS而非8.0；同属MySQL8家族。
-- Redis列表无worker崩溃租约及自动重投、无取消；新库自动建表没有存量库版本化迁移/回滚。列表最多200条实体。
+- 租约依赖worker心跳与协调循环的最终恢复，不提供用户主动取消；租约超时窗口内崩溃任务会延迟一个回收周期才重投。新库自动建表，存量库仅做幂等加列，没有完整版本化迁移/回滚。列表最多200条实体。
 - 不处理真实设备通信、单位换算、加权/异方差Deming或重复个体的层次模型；无校准参数CI。比例偏倚仅描述，不自动断言显著性。
 - 模拟数据不能用于真实设备合格判定；Google Fonts需联网，断网回退字体。
 
